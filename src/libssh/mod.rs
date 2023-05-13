@@ -1,8 +1,15 @@
 mod libsshgen;
 
+#[allow(dead_code)]
+
 use std::marker::PhantomData;
+use std::mem::transmute;
+use std::ptr::null_mut;
 
 pub use libsshgen::ssh_options_e as ssh_options;
+pub use libsshgen::ssh_keytypes_e as ssh_keytypes;
+pub use libsshgen::ssh_auth_e as ssh_auth;
+
 use libsshgen::ssh_session as raw_ssh_session;
 
 pub use libsshgen::SSH_AGAIN;
@@ -18,8 +25,10 @@ mod private {
 use private::SessionStatus;
 pub struct Setup;
 pub struct Connected;
+pub struct Authenticated;
 impl SessionStatus for Setup {}
 impl SessionStatus for Connected {}
+impl SessionStatus for Authenticated {}
 
 /// An SSHSession is an opaque object representing an SSH session.
 /// A session is a single connection to the server and must
@@ -30,6 +39,14 @@ impl SessionStatus for Connected {}
 pub struct SSHSession<T: SessionStatus> {
     ptr: raw_ssh_session,
     _marker: PhantomData<T>,
+}
+
+impl<T: SessionStatus> Drop for SSHSession<T> {
+    fn drop(&mut self) {
+        if !self.ptr.is_null() {
+            unsafe { libsshgen::ssh_free(self.ptr) };
+        }
+    }
 }
 
 impl SSHSession<Setup> {
@@ -79,28 +96,32 @@ impl SSHSession<Setup> {
     ///
     /// The host and various options are configured using the `options_set_*`
     /// collection of functions, which modify the SSHSession object internally.
-    pub fn connect(self) -> Result<SSHSession<Connected>, i32> {
+    pub fn connect(mut self) -> Result<SSHSession<Connected>, i32> {
         let res = unsafe { libsshgen::ssh_connect(self.ptr) };
 
         match res {
-            0 => Ok(SSHSession {
-                ptr: self.ptr,
-                _marker: PhantomData,
-            }),
+            0 => {
+                // ensure we don't erase this ptr since we're transforming
+                // rather than creating
+                let ptr = std::mem::replace(&mut self.ptr, null_mut());
+                Ok(SSHSession {
+                    ptr,
+                    _marker: PhantomData,
+                })
+            }
             _ => Err(res),
         }
     }
 }
 
 impl SSHSession<Connected> {
-    
-     /// Returns the server's Banner.
-     ///
-     /// The banner is set by the server and includes the ssh server's version information.
-     /// An example of such a banner is:
-     /// ```
-     /// SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1
-     /// ```
+    /// Returns the server's Banner.
+    ///
+    /// The banner is set by the server and includes the ssh server's version information.
+    /// An example of such a banner is:
+    /// ```
+    /// SSH-2.0-OpenSSH_8.4p1 Debian-5+deb11u1
+    /// ```
     pub fn get_server_banner(&self) -> Result<&str, ()> {
         let raw = unsafe { libsshgen::ssh_get_serverbanner(self.ptr) };
         if raw.is_null() {
@@ -114,21 +135,83 @@ impl SSHSession<Connected> {
     /// Disconnects gracefully from the remote server
     ///
     /// Note that after disconnecting the session can be re-used to connect again.
-    pub fn disconnect(self) -> SSHSession<Setup> {
+    pub fn disconnect(mut self) -> SSHSession<Setup> {
         unsafe { libsshgen::ssh_disconnect(self.ptr) };
+        // we don't want to delete the ptr, so we replace it with NULL in the original
+        let ptr = std::mem::replace(&mut self.ptr, null_mut());
         SSHSession {
-            ptr: self.ptr,
+            ptr,
             _marker: PhantomData,
         }
     }
     /// Disconnects immediately from the server by closing the socket
     ///
     /// Note that after disconnecting the session can be re-used to connect again.
-    pub fn silent_disconnect(self) -> SSHSession<Setup> {
+    pub fn silent_disconnect(mut self) -> SSHSession<Setup> {
         unsafe { libsshgen::ssh_silent_disconnect(self.ptr) };
+        // we don't want to delete the ptr, so we replace it with NULL in the original
+        let ptr = std::mem::replace(&mut self.ptr, null_mut());
         SSHSession {
-            ptr: self.ptr,
+            ptr,
             _marker: PhantomData,
         }
+    }
+
+    /// Tries to authenticate with a provided public key.
+    ///
+    /// # Arguments
+    ///
+    /// * key : the key object to authenticate with
+    pub fn userauth_try_publickey(&self, key: &PubKey) -> ssh_auth {
+        unsafe { transmute(libsshgen::ssh_userauth_try_publickey(self.ptr, std::ptr::null(), key.ptr)) }
+    }
+}
+
+// public key functions
+#[derive(Debug)]
+pub struct PubKey {
+    ptr: libsshgen::ssh_key,
+}
+
+impl Drop for PubKey {
+    fn drop(&mut self) {
+        unsafe { libsshgen::ssh_key_free(self.ptr); }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Alloc,
+    UTF8,
+    Parse,
+}
+
+impl PubKey {
+    /// Imports a public key of the given type from a base64 string
+    ///
+    /// # Arguments
+    /// * k   : the base64 encoded public key
+    /// * typ : the type of key to interprete the bytes as
+    ///
+    /// # Returns
+    /// Either a new PubKey struct or an Error value
+    pub fn from_base64(k: &str, typ: ssh_keytypes) -> Result<PubKey, Error> {
+        let mut ptr: libsshgen::ssh_key = unsafe { libsshgen::ssh_key_new() };
+        if ptr.is_null() {
+            return Err(Error::Alloc);
+        }
+        
+        std::ffi::CString::new(k.clone())
+            .map_err(|_| Error::UTF8)
+            .and_then(|c| Ok(c.into_raw()))
+            .and_then(|c| {
+                let res = unsafe { libsshgen::ssh_pki_import_pubkey_base64(c, typ, &mut ptr) };
+                if res == 0 {
+                    Ok(PubKey { ptr, })
+                }
+                else {
+                    Err(Error::Parse)
+                }
+            })
     }
 }
