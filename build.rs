@@ -42,6 +42,16 @@ impl ParseCallbacks for IgnoreMacros {
             MacroParsingBehavior::Default
         }
     }
+
+    fn add_derives(&self, _info: &bindgen::callbacks::DeriveInfo<'_>) -> Vec<String> {
+        if _info.name == "ssh_keytypes_e" {
+            vec!["clap::ValueEnum".into()]
+        }
+        else {
+            vec![]
+        }
+        
+    }
 }
 
 impl IgnoreMacros {

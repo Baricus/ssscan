@@ -1,11 +1,54 @@
 mod libssh;
 
-use libssh::SSHSession;
-use libssh::PubKey;
-use libssh::ssh_keytypes as keytypes;
-use libssh::ssh_auth as auth;
+use libssh::{SSHSession, PubKey, ssh_keytypes as keytypes, ssh_auth as auth};
+
+use clap::{Parser};
+
+use std::path::PathBuf;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Args {
+    #[command(flatten)]
+    key: Key,
+
+    #[arg(short, long, value_name="PORT", default_value="22")]
+    port: String,
+
+    #[arg(value_name="REMOTE_USER", required=true)]
+    username: String,
+}
+
+#[derive(Parser, Debug, Clone)]
+#[clap(group(clap::ArgGroup::new("key").required(true).multiple(false).args(&["b64", "file"])))]
+struct Key {
+    #[arg(short, long, value_name="KEY_B64", requires="keytype")]
+    b64: Option<String>,
+
+    #[arg(long="type")]
+    keytype : keytypes,
+
+    #[arg(short, long, value_name="KEY_FILE", conflicts_with="keytype")]
+    file: Option<PathBuf>,
+}
+
+fn get_key(k: Key) -> Result<PubKey, libssh::Error> {
+    match k.b64 {
+        Some(b64) => PubKey::from_base64(&b64, k.keytype),
+        None => {
+            match k.file {
+            Some(f) => panic!("NOT IMPLEMENTED"),
+            None => panic!("IMPOSSIBLE"),
+            }
+        }
+    }
+}
 
 fn main() {
+    let args = Args::parse();
+
+    let key = get_key(args.key).expect("Invalid key");
+
     let session = SSHSession::new();
     session.options_set_host("localhost");
     session.options_set_user("baricus");
@@ -19,8 +62,7 @@ fn main() {
     println!("{}", b);
 
     // import a public key
-    let key = PubKey::from_base64("AAAAB3NzaC1yc2EAAAADAQABAAABgQDEn4mWo59WJXmVkXlDyDBTkeHHjssZupD42hoZROs2ez4MUYaKEiiPUN98D/331NmidrVwu+P73K4Mo7B8uJpQ9umvx6L4Duw4msQwOSeW9fcaIOnFXhq55WhWBJxv4KAMXROhadr1MWutPSlIVe6M0z//dxXeqOYpH7DZcQVbJECSChJ/BWeC9HYDZJnvQuSa2a3pGaWWVOU1Xr5IHyGMQ3Sxn5JlX8VkK+OH9a/A9n90oS9Q2RytNWdX9SUXV5m1K7SN/Ry7ewfaNg/cKEnpafffGjnvz1YW9CljCQwXD74z74kaIWpATFXH9adxZHzpvOrF85TJDF9btewsRwVN23Jsy7V04Ei/XD33IvXCXjEI2bENf0+vOrSFQA5wE/Y/jueTvJ95q5ouzo1c7nvY9m9LMpSicXyOgbRLmClum940t2mh4wmST1vHXObWTbkEgzflacXmY5SWtpazdKQI2KciDF3OCm4QsLqm2M0aqYQ3PUjSdTKUZIAbXpmus+U=", keytypes::SSH_KEYTYPE_RSA)
-        .expect("Invalid key");
+
 
     // try it on the server
     match session.userauth_try_publickey(&key) {
