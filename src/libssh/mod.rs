@@ -96,6 +96,9 @@ impl SSHSession<Setup> {
     ///
     /// The host and various options are configured using the `options_set_*`
     /// collection of functions, which modify the SSHSession object internally.
+    ///
+    /// # Return
+    /// Returns a Result<SSHSession<Connected>, i32> object
     pub fn connect(mut self) -> Result<SSHSession<Connected>, i32> {
         let res = unsafe { libsshgen::ssh_connect(self.ptr) };
 
@@ -168,10 +171,16 @@ impl SSHSession<Connected> {
 }
 
 // public key functions
+
+/// a PubKey is an opaque wrapper around a libssh ssh_key structure
+/// specifically limited to public key-related functions
+///
+/// Note that this is marked Sync as these are thread safe in the base lib
 #[derive(Debug)]
 pub struct PubKey {
     ptr: libsshgen::ssh_key,
 }
+unsafe impl Sync for PubKey {}
 
 impl Drop for PubKey {
     fn drop(&mut self) {
@@ -225,7 +234,7 @@ impl PubKey {
             return Err(Error::Alloc);
         }
 
-        std::ffi::CString::new(f.clone())
+        std::ffi::CString::new(f.to_str().expect("Invalid file path"))
             .map_err(|_| Error::UTF8)
             .and_then(|c| Ok(c.into_raw()))
             .and_then(|f| {
