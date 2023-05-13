@@ -214,4 +214,28 @@ impl PubKey {
                 }
             })
     }
+
+    /// Imports a public key from a given file
+    ///
+    /// # Arguments
+    /// * f : the file containing a public key to import
+    pub fn from_file(f: &std::path::PathBuf) -> Result<PubKey, Error> {
+        let mut ptr: libsshgen::ssh_key = unsafe { libsshgen::ssh_key_new() };
+        if ptr.is_null() {
+            return Err(Error::Alloc);
+        }
+
+        std::ffi::CString::new(f.clone())
+            .map_err(|_| Error::UTF8)
+            .and_then(|c| Ok(c.into_raw()))
+            .and_then(|f| {
+                let res = unsafe { libsshgen::ssh_pki_import_pubkey_file(f, &mut ptr) };
+                if res == 0 {
+                    Ok(PubKey { ptr, })
+                }
+                else {
+                    Err(Error::Parse)
+                }
+            })
+    }
 }

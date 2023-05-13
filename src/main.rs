@@ -17,6 +17,9 @@ struct Args {
 
     #[arg(value_name="REMOTE_USER", required=true)]
     username: String,
+
+    #[arg(value_name="HOST", required=true)]
+    host: String,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -26,7 +29,7 @@ struct Key {
     b64: Option<String>,
 
     #[arg(long="type")]
-    keytype : keytypes,
+    keytype : Option<keytypes>,
 
     #[arg(short, long, value_name="KEY_FILE", conflicts_with="keytype")]
     file: Option<PathBuf>,
@@ -34,10 +37,10 @@ struct Key {
 
 fn get_key(k: Key) -> Result<PubKey, libssh::Error> {
     match k.b64 {
-        Some(b64) => PubKey::from_base64(&b64, k.keytype),
+        Some(b64) => PubKey::from_base64(&b64, k.keytype.unwrap()),
         None => {
             match k.file {
-            Some(f) => panic!("NOT IMPLEMENTED"),
+            Some(f) => PubKey::from_file(&k.file.unwrap()),
             None => panic!("IMPOSSIBLE"),
             }
         }
@@ -48,11 +51,14 @@ fn main() {
     let args = Args::parse();
 
     let key = get_key(args.key).expect("Invalid key");
+    let host = &args.host;
+    let user = &args.username;
+    let port = &args.port;
 
     let session = SSHSession::new();
-    session.options_set_host("localhost");
-    session.options_set_user("baricus");
-    session.options_set_port_str("22");
+    session.options_set_host(host);
+    session.options_set_user(user);
+    session.options_set_port_str(port);
 
     let session = session.connect().expect("Could not connect");
     let b = session
