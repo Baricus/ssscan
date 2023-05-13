@@ -2,14 +2,13 @@ extern crate bindgen;
 use bindgen::callbacks::MacroParsingBehavior;
 use bindgen::callbacks::ParseCallbacks;
 
-use std::env;
 use std::collections::HashSet;
+use std::env;
 use std::path::PathBuf;
 
 // need to avoid macro parsing for a specific thing :(
 // https://github.com/rust-lang/rust-bindgen/issues/687#issuecomment-1312298570
-const IGNORE_MACROS
-: [&str; 20] = [
+const IGNORE_MACROS: [&str; 20] = [
     "FE_DIVBYZERO",
     "FE_DOWNWARD",
     "FE_INEXACT",
@@ -47,8 +46,7 @@ impl ParseCallbacks for IgnoreMacros {
 
 impl IgnoreMacros {
     fn new() -> Self {
-        Self(IGNORE_MACROS
-            .into_iter().map(|s| s.to_owned()).collect())
+        Self(IGNORE_MACROS.into_iter().map(|s| s.to_owned()).collect())
     }
 }
 
