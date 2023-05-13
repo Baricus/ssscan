@@ -1,6 +1,6 @@
 mod libssh;
 
-use scoped_threadpool::Pool;
+use scoped_thread_pool::Pool;
 
 use libssh::{SSHSession, PubKey, ssh_keytypes as keytypes, ssh_auth as auth};
 
@@ -84,7 +84,7 @@ fn main() {
     let user = args.username;
     let port = args.port;
 
-    let mut pool = Pool::new(args.threads as u32);
+    let mut pool = Pool::new(args.threads);
     let stdin = stdin();
 
     // wrap this all in a scope so this doesn't break
@@ -103,7 +103,6 @@ fn main() {
                     Ok(..)  => buff.trim().to_string(),
                     Err(..) => " ".to_owned(),
                 }
-
             };
 
             if line.is_empty() {
@@ -112,9 +111,9 @@ fn main() {
             else {
                 s.execute(|| test_host(line, &port, &user, &key));
             }
-        }    
-
-        // wait until we're done at the end
-        s.join_all();
+        }
+        
+        // wait for all jobs to end before we exit
+        s.join();
     });
 }
