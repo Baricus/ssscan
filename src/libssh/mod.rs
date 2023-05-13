@@ -181,6 +181,7 @@ pub struct PubKey {
     ptr: libsshgen::ssh_key,
 }
 unsafe impl Sync for PubKey {}
+unsafe impl Send for PubKey {}
 
 impl Drop for PubKey {
     fn drop(&mut self) {

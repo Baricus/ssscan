@@ -1,10 +1,10 @@
 mod libssh;
 
+use scoped_threadpool::Pool;
+
 use libssh::{SSHSession, PubKey, ssh_keytypes as keytypes, ssh_auth as auth};
 
 use clap::{Parser};
-
-use rayon::ThreadPoolBuilder;
 
 use std::{path::PathBuf, io::stdin};
 
@@ -81,31 +81,40 @@ fn main() {
     let args = Args::parse();
 
     let key  = get_key(args.key).expect("Invalid key");
-    let user = &args.username;
-    let port = &args.port;
+    let user = args.username;
+    let port = args.port;
 
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(args.threads)
-        .build().expect("Cannot build thread pool");
-
+    let mut pool = Pool::new(args.threads as u32);
     let stdin = stdin();
 
-    let mut l = true;
-    while l {
-        let line = {
-            let mut buff = String::new();
-            let r = stdin.read_line(&mut buff);
-            match r {
-                Ok(..)  => buff.trim().to_string(),
-                Err(..) => " ".to_owned(),
+    // wrap this all in a scope so this doesn't break
+    // this is an annoying pain point
+    // since we can't share the values, even
+    // if we wait for the threads to finish at the end
+    //
+    // I'd love not to need this specific kind of thread pool, but at least it works
+    pool.scoped(|s| {
+        let mut l = true;
+        while l {
+            let line = {
+                let mut buff = String::new();
+                let r = stdin.read_line(&mut buff);
+                match r {
+                    Ok(..)  => buff.trim().to_string(),
+                    Err(..) => " ".to_owned(),
+                }
+
+            };
+
+            if line.is_empty() {
+                l = false;
             }
+            else {
+                s.execute(|| test_host(line, &port, &user, &key));
+            }
+        }    
 
-        };
-
-        if line.is_empty() {
-            l = false;
-        }
-
-        pool.install(|| test_host(line, port, user, &key))
-    }    
+        // wait until we're done at the end
+        s.join_all();
+    });
 }
