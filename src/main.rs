@@ -4,7 +4,7 @@ use scoped_thread_pool::Pool;
 
 use libssh::{SSHSession, PubKey, ssh_keytypes as keytypes, ssh_auth as auth};
 
-use clap::{Parser};
+use clap::Parser;
 
 use core::panic;
 use std::{path::PathBuf, io::stdin};
@@ -12,28 +12,47 @@ use std::{path::PathBuf, io::stdin};
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
+    /// The public key to test against IPs
     #[command(flatten)]
     key: Key,
 
+    /// # of threads to spawn to check IPs against the key
+    /// 
+    /// NOTE: This can be much higher than the number of cores,
+    ///       as this is an IO bound task rather than CPU bound
     #[arg(short, long, value_name="NUM_THREADS", default_value="1")]
     threads: usize,
 
+    /// Port to connect to via ssh
     #[arg(short, long, value_name="PORT", default_value="22")]
     port: String,
 
+    /// username to connect with
     #[arg(value_name="REMOTE_USER", required=true)]
     username: String,
+
+    /// Whether to allow AUTH_PARTIAL responses.  
+    /// LibSSH accepts this as a possibility, but the 
+    /// SSH auth RFC does not allow them.
+    ///
+    /// This usually occurs erroneously from testing,
+    /// so this is set to false by default.
+    #[arg(long="partial", default_value="false")]
+    allow_partial: bool,
 }
 
 #[derive(Parser, Debug, Clone)]
 #[clap(group(clap::ArgGroup::new("key").required(true).multiple(false).args(&["b64", "file"])))]
 struct Key {
+    /// A base64 encoded public key
     #[arg(short, long, value_name="KEY_B64", requires="keytype")]
     b64: Option<String>,
 
+    /// the type of key in the b64 parameter
     #[arg(long="type")]
     keytype : Option<keytypes>,
 
+    /// A public key file to read a key from
     #[arg(short, long, value_name="KEY_FILE", conflicts_with="keytype")]
     file: Option<PathBuf>,
 }
@@ -50,7 +69,7 @@ fn get_key(k: Key) -> Result<PubKey, libssh::Error> {
     }
 }
 
-fn test_host(host: String, port: &str, user: &str, key: &PubKey) {
+fn test_host(partial: bool, host: String, port: &str, user: &str, key: &PubKey) {
     let session = SSHSession::new();
     session.options_set_host(&host);
     session.options_set_user(user);
@@ -68,7 +87,16 @@ fn test_host(host: String, port: &str, user: &str, key: &PubKey) {
             match r {
                 // this key is allowed or partially allowed
                 Ok(auth::SSH_AUTH_SUCCESS) => println!("{}\t{}", &host, &b),
-                Ok(auth::SSH_AUTH_PARTIAL) => println!("{}\t{}", &host, &b),
+                // partial seems to come as an error response from non-compliant ssh servers
+                // so we only include it in the output if requested
+                Ok(auth::SSH_AUTH_PARTIAL) => {
+                    if partial {
+                        println!("{}\t{}\t\t**PARTIAL**", &host, &b)
+                    }
+                    else {
+                        ()
+                    }
+                },
                 // we didn't get access so print nothing
                 Ok(auth::SSH_AUTH_DENIED) => (),
 
@@ -101,6 +129,8 @@ fn main() {
     let pool = Pool::new(args.threads);
     let stdin = stdin();
 
+    let partial = args.allow_partial;
+
     // wrap this all in a scope so this doesn't break
     // this is an annoying pain point
     // since we can't share the values, even
@@ -126,7 +156,7 @@ fn main() {
                 l = false;
             }
             else {
-                s.execute(|| test_host(line, &port, &user, &key));
+                s.execute(|| test_host(partial, line, &port, &user, &key));
             }
         }
         
