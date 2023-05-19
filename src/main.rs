@@ -147,13 +147,20 @@ fn main() {
                 let r = stdin.read_line(&mut buff);
                 match r {
                     Ok(..)  => buff.trim().to_string(),
-                    Err(..) => " ".to_owned(),
+                    Err(e) => {
+                        eprintln!("Error: Line read: {}", e.to_string());
+                        " ".to_owned() // dummy string to ignore ip
+                    },
                 }
             };
 
             // if we receive an empty input line, stop the loop
             if line.is_empty() {
                 l = false;
+            }
+            else if line == " " {
+                // do nothing
+                ()
             }
             else {
                 s.execute(|| test_host(partial, line, &port, &user, &key));
