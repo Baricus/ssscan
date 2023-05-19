@@ -6,6 +6,7 @@ use libssh::{SSHSession, PubKey, ssh_keytypes as keytypes, ssh_auth as auth};
 
 use clap::{Parser};
 
+use core::panic;
 use std::{path::PathBuf, io::stdin};
 
 #[derive(Parser, Debug)]
@@ -63,14 +64,23 @@ fn test_host(host: String, port: &str, user: &str, key: &PubKey) {
                 .unwrap_or(""); // if we can't get the banner, don't print it
 
             // actually send the key packet
-            match session.userauth_try_publickey(&key) {
-                auth::SSH_AUTH_DENIED  => (),
-                auth::SSH_AUTH_SUCCESS => println!("{} {}", &host, &b),
+            let r = session.userauth_try_publickey(&key);
+            match r {
+                Ok(auth::SSH_AUTH_SUCCESS) => println!("{} {}", &host, &b),
+                Ok(auth::SSH_AUTH_PARTIAL) => println!("{} {}", &host, &b),
+                // we didn't get access
+                Ok(auth::SSH_AUTH_DENIED) => (),
 
-                auth::SSH_AUTH_ERROR => panic!("Serious SSH Error happened!"),
-                _ => panic!("Impossible return value from try_publickey"),
-            };
-                
+                // something went wrong
+                Err(auth::SSH_AUTH_AGAIN) => eprintln!("Error: nonblocking predicate returned in userauth_try_publickey"),
+                Err(auth::SSH_AUTH_INFO)  => eprintln!("Error: Impossible return (AUTH_INFO) for userauth_try_publickey"),
+                Err(auth::SSH_AUTH_ERROR) => eprintln!("Error: LibSSH error: {}", session.get_error()),
+
+                // impossible combinations
+                // I really should rework this API
+                _ => panic!("Impossible!"),
+            }
+
             session.silent_disconnect();
         }
         Err(_) => (), // we don't care here since this is still a failure
@@ -84,7 +94,7 @@ fn main() {
     let user = args.username;
     let port = args.port;
 
-    let mut pool = Pool::new(args.threads);
+    let pool = Pool::new(args.threads);
     let stdin = stdin();
 
     // wrap this all in a scope so this doesn't break

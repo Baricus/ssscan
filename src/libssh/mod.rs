@@ -49,6 +49,27 @@ impl<T: SessionStatus> Drop for SSHSession<T> {
     }
 }
 
+/// generic methods allowed in any mode
+impl<T: SessionStatus> SSHSession<T> {
+
+    /// Returns the string representation of the 
+    /// last libssh error last encountered
+    /// when running session commands.  
+    ///
+    /// This function returns a reference to a static string
+    /// allocated by the library.
+    pub fn get_error(&self) -> &str {
+        let str = unsafe { 
+            let rstr = libsshgen::ssh_get_error(self.ptr as *mut std::ffi::c_void);
+
+            std::ffi::CStr::from_ptr(rstr).to_str().expect("LibSSH Error is Non-UTF8")
+        };
+
+        str
+    }
+}
+
+#[allow(dead_code)]
 impl SSHSession<Setup> {
     /// Returns a new SSHSession in Setup.
     /// Use the `options_set_*` functions to configure it
@@ -117,6 +138,7 @@ impl SSHSession<Setup> {
     }
 }
 
+#[allow(dead_code)]
 impl SSHSession<Connected> {
     /// Returns the server's Banner.
     ///
@@ -165,8 +187,17 @@ impl SSHSession<Connected> {
     /// # Arguments
     ///
     /// * key : the key object to authenticate with
-    pub fn userauth_try_publickey(&self, key: &PubKey) -> ssh_auth {
-        unsafe { transmute(libsshgen::ssh_userauth_try_publickey(self.ptr, std::ptr::null(), key.ptr)) }
+    pub fn userauth_try_publickey(&self, key: &PubKey) -> Result<ssh_auth, ssh_auth> {
+        let ret = unsafe { transmute(libsshgen::ssh_userauth_try_publickey(self.ptr, std::ptr::null(), key.ptr)) };
+        match ret {
+            ssh_auth::SSH_AUTH_SUCCESS => Ok(ret),
+            ssh_auth::SSH_AUTH_PARTIAL => Ok(ret),
+            ssh_auth::SSH_AUTH_DENIED  => Ok(ret),
+
+            ssh_auth::SSH_AUTH_AGAIN   => Err(ret),
+            ssh_auth::SSH_AUTH_INFO    => Err(ret),
+            ssh_auth::SSH_AUTH_ERROR   => Err(ret),
+        }
     }
 }
 
