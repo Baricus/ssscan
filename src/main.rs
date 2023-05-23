@@ -149,7 +149,7 @@ fn main() {
                     Ok(..)  => buff.trim().to_string(),
                     Err(e) => {
                         eprintln!("Error: Line read: {}", e.to_string());
-                        " ".to_owned() // dummy string to ignore ip
+                        " ".to_owned() // dummy string to ignore failing line
                     },
                 }
             };
