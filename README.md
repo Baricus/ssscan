@@ -47,7 +47,7 @@ ssscan -b AAAAC3NzaC1lZDI1NTE5AAAAIEmSKzdXduwYgD2ICYWrOo1xMiZW5RUK2MqxgvEJmVn9 -
 while the public key file option just specifies the file:
 ```bash
 FILE=$(mktemp) # or any other file if you prefer
-curl https://github.com/baricus.keys | head -n 1 > $FILE
+curl https://github.com/baricus.keys | tail -n 1 > $FILE
 ssscan -f $FILE git
 ```
 In either case, the program will wait for IPs to test entered via user input.
@@ -88,7 +88,7 @@ so you can have far more than you have physical threads on the machine with litt
 
 For specifically the use case of piping a network scanner directly into `ssscan`,
 around double the average receive rate is a good number of threads;
-testing a single server often takes around 1-2 seconds, so double the receiving rate
+testing a single server often takes around 1-2 seconds in the worst case, so double the receiving rate
 usually provides enough of a buffer to prevent a large task queue from building up.  
 This may require some tuning to find the best number of threads for your use case.  
 
