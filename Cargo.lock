@@ -452,9 +452,9 @@ dependencies = [
 
 [[package]]
 name = "scoped-thread-pool"
-version = "1.0.3"
+version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "18f1bff298428cdbd3148b74a3b59fb7127ab9277ab8fd9520a3d5d10c2e2d85"
+checksum = "f47bb6fb61d5e965dc381cafc4d1df6b36a98872ddb742afa8650f53c215b2ab"
 dependencies = [
  "crossbeam",
  "scopeguard",
