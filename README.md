@@ -3,8 +3,6 @@
 without requiring the user to know the associated private key.
 `ssscan` is focused on asking many servers about one specific public key,
 rather than asking a single server about many keys.
-For example, giving `ssscan` the public key left as a backdoor by malware
-searches for compromised machines with the same backdoor.
 
 As this is relatively simple program to write,
 and I wanted an excuse to try out `Rust`,
